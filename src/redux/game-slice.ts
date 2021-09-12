@@ -1,38 +1,96 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { GameStatus, IGameSlice } from '../card/card-interfaces'
+import { createCardsPairs, getHalfOpenPair } from '../card/card-pairs-logic'
 
-interface IGameCard {
-  isOpen?: boolean
-  isHalfOpen?: boolean
-  x: number
-  y: number
-}
-
-interface IGameSlice {
-  grid: {
-    height: number
-    width: number
-  }
-  elements?: IGameCard[]
-}
+export const GAME_TIMER = parseInt(process.env.REACT_APP_GAME_TIMER ?? '160')
 
 const initialState: IGameSlice = {
+  gameStatus: GameStatus.notStarted,
+  secondsTimer: GAME_TIMER,
   grid: {
-    height: 6,
-    width: 6
-  }
+    height: parseInt(process.env.REACT_APP_GRID_HEIGHT ?? '6'),
+    width: parseInt(process.env.REACT_APP_GRID_WIDTH ?? '6'),
+  },
 }
 
-export const gameSlice = createSlice({
+const gameSlice = createSlice({
   name: 'game',
   initialState: initialState,
   reducers: {
-    init: (state: IGameSlice, action) => {
-      
+    initGame: (state: IGameSlice) => {
+      state.elements = createCardsPairs(state.grid.height, state.grid.width)
+      state.gameStatus = GameStatus.playing
+      state.secondsTimer = GAME_TIMER
+    },
+
+    increaseTimer: (state) => {
+      if (state.secondsTimer == null) {
+        return
+      }
+
+      state.secondsTimer -= 1
+
+      if (state.secondsTimer <= 0) {
+        state.secondsTimer = GAME_TIMER
+        state.gameStatus = GameStatus.end
+        return
+      }
+    },
+
+    closeCard: (state, action: PayloadAction<{ cardId: number }>) => {
+      const cardId = action.payload?.cardId
+      const openedElement = state.elements?.[cardId]
+      if (
+        state.elements == null ||
+        openedElement == null ||
+        !openedElement.isHalfOpen
+      ) {
+        return
+      }
+      state.elements[cardId] = { ...openedElement, isHalfOpen: false }
+    },
+
+    openCard: (state, action: PayloadAction<{ cardId: number }>) => {
+      const cardId = action.payload?.cardId
+      const openedElement = state.elements?.[cardId]
+
+      if (
+        state.elements == null ||
+        openedElement == null ||
+        state.elements.filter((val) => val.isHalfOpen).length >= 2 ||
+        openedElement.isOpen
+      ) {
+        return
+      }
+
+      state.elements[cardId] = { ...openedElement, isHalfOpen: true }
+
+      const openedPair = getHalfOpenPair(state.elements)
+
+      if (
+        openedPair.length >= 2 &&
+        openedPair?.every((value) => value.isOpen)
+      ) {
+        openedPair.forEach((value) => {
+          if (state.elements?.[value.index] == null) {
+            return
+          }
+          state.elements[value.index] = {
+            ...state.elements?.[value.index],
+            isOpen: true,
+          }
+        })
+
+        if (state.elements.every((element) => element.isOpen)) {
+          state.secondsTimer = GAME_TIMER - state.secondsTimer
+          state.gameStatus = GameStatus.end
+        }
+      }
     },
   },
 })
 
-// Action creators are generated for each case reducer function
-export const { init } = gameSlice.actions
+export const { initGame, openCard, closeCard, increaseTimer } =
+  gameSlice.actions
 
 export default gameSlice.reducer
